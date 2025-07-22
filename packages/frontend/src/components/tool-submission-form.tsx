@@ -1,4 +1,3 @@
-import React from "react";
 import { useForm, Controller } from "react-hook-form";
 import { effectTsResolver } from "@hookform/resolvers/effect-ts";
 import { ToolSubmissionSchema, type ToolSubmissionFormData } from "@/schema";
