@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { effectTsResolver } from "@hookform/resolvers/effect-ts";
 import { ToolSubmissionSchema, type ToolSubmissionFormData } from "@/schema";
@@ -6,10 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 export function ToolSubmissionForm() {
+  const [submissionStatus, setSubmissionStatus] = useState<
+    "idle" | "success" | "error"
+  >("idle");
+  const [serverMessage, setServerMessage] = useState<string>("");
+
   const {
     control,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<ToolSubmissionFormData>({
     resolver: effectTsResolver(ToolSubmissionSchema),
     mode: "onTouched",
