@@ -1,4 +1,4 @@
 import { HttpApi } from "@effect/platform";
-import { usersGroup } from "./group";
+import { toolsGroup } from "./group";
 
-export const usersApi = HttpApi.make("usersApi").add(usersGroup);
+export const toolsApi = HttpApi.make("toolsApi").add(toolsGroup);
