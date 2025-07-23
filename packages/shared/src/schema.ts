@@ -20,3 +20,7 @@ export const ToolSubmissionSchema = Schema.Struct({
 export type ToolSubmissionFormData = Schema.Schema.Type<
   typeof ToolSubmissionSchema
 >;
+
+export const ToolSubmissionResponseSchema = Schema.Struct({
+  message: Schema.String,
+});

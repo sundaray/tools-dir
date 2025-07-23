@@ -1,5 +1,5 @@
-import { HttpApiGroup, HttpApiMiddleware } from "@effect/platform";
+import { HttpApiGroup } from "@effect/platform";
 
 import { submitTool } from "./endpoints";
 
-export const usersGroup = HttpApiGroup.make("tools").add(submitTool);
+export const toolsGroup = HttpApiGroup.make("tools").add(submitTool);
