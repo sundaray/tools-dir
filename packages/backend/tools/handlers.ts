@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "@effect/platform";
-import { toolsApi } from "./api";
+import { toolsApi } from "./api.js";
 
 export const submitToolHandler = HttpApiBuilder.handler(
   toolsApi,

@@ -1,7 +1,7 @@
 import { Layer } from "effect";
 import { HttpApiBuilder } from "@effect/platform";
-import { toolsApi } from "./api";
-import { submitToolHandler } from "./handlers";
+import { toolsApi } from "./api.js";
+import { submitToolHandler } from "./handlers.js";
 
 export const toolsGroupLive = HttpApiBuilder.group(
   toolsApi,
