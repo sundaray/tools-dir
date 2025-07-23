@@ -2,12 +2,19 @@
   "name": "shared",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/schema.ts",
+  "types": "src/schema.ts",
+  "exports": {
+    "./schema": "./src/schema.ts"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module"
+  "type": "module",
+  "dependencies": {
+    "effect": "^3.17.1"
+  }
 }
