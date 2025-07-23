@@ -1,5 +1,4 @@
 // packages/frontend/src/entry-server.tsx
-import { pipeline } from "node:stream/promises";
 import {
   RouterServer,
   createRequestHandler,
@@ -7,7 +6,8 @@ import {
 } from "@tanstack/react-router/ssr/server";
 import { createRouter } from "@/router";
 import type { HttpServerRequest } from "@effect/platform";
-import { Effect } from "effect";
+import { Headers } from "@effect/platform";
+import { Option } from "effect";
 
 export async function render({
   request,
@@ -16,25 +16,27 @@ export async function render({
   request: HttpServerRequest.HttpServerRequest;
   head: string;
 }) {
-  // Convert Effect Platform request to web standard Request
-  const url = new URL(
-    request.url,
-    `http://${request.headers["host"] || "localhost"}`
+  // Get host header using Effect's Headers module
+  const host = Headers.get(request.headers, "host").pipe(
+    Option.getOrElse(() => "localhost:3000")
   );
+
+  // Construct URL properly
+  const url = new URL(request.url, `http://${host}`);
+
+  // Convert headers to Web API Headers
+  const webHeaders = new globalThis.Headers();
+  Object.entries(request.headers).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((v) => webHeaders.append(key, v));
+    } else if (value) {
+      webHeaders.set(key, value);
+    }
+  });
 
   const webRequest = new Request(url.href, {
     method: request.method,
-    headers: (() => {
-      const headers = new Headers();
-      Object.entries(request.headers).forEach(([key, value]) => {
-        if (Array.isArray(value)) {
-          value.forEach((v) => headers.append(key, v));
-        } else if (value) {
-          headers.set(key, value);
-        }
-      });
-      return headers;
-    })(),
+    headers: webHeaders,
   });
 
   // Create a request handler

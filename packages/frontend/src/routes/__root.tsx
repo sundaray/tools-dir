@@ -1,5 +1,4 @@
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
-import * as React from "react";
 import {
   HeadContent,
   Link,
