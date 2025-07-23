@@ -1,16 +1,20 @@
 import { useId, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { effectTsResolver } from "@hookform/resolvers/effect-ts";
-import { ToolSubmissionSchema, type ToolSubmissionFormData } from "@/schema";
+import {
+  ToolSubmissionSchema,
+  type ToolSubmissionFormData,
+} from "shared/schema";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FormMessage } from "@/components/form-message";
 import { FormFieldMessage } from "@/components/form-field-message";
 import { getFieldErrorId } from "@/lib/utils";
+import axios from "axios";
 
 export function ToolSubmissionForm() {
-  const formId = useId();
+  const id = useId();
   const [isProcessing, setIsProcessing] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -30,13 +34,14 @@ export function ToolSubmissionForm() {
     },
   });
 
-  const onSubmit = function (data: ToolSubmissionFormData) {
+  const onSubmit = async function (data: ToolSubmissionFormData) {
     setIsProcessing(true);
     setErrorMessage(null);
     setSuccessMessage(null);
 
     try {
-      console.log("Form data:", data);
+      const response = await axios.post("/api/tools/submit", data);
+      console.log("/tools/submit API response: ", response.data.message);
     } catch (error) {
     } finally {
       setIsProcessing(false);
@@ -47,7 +52,7 @@ export function ToolSubmissionForm() {
   const messageType = successMessage ? "success" : "error";
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="grid gap-2">
       {message && <FormMessage message={message} type={messageType} />}
 
       {/* Name Field */}
@@ -57,20 +62,22 @@ export function ToolSubmissionForm() {
           name="name"
           control={control}
           render={function ({ field }) {
-            const errorId = getFieldErrorId(field.name, formId);
+            const fieldErrorId = getFieldErrorId(field.name, id);
+            const fieldError = errors[field.name];
             return (
               <>
                 <Input
                   {...field}
                   id="name"
+                  className="mt-2 border-neutral-300"
                   placeholder="Enter tool name"
-                  aria-invalid={errors.name ? "true" : "false"}
-                  aria-describedby={errors.name ? errorId : undefined}
+                  aria-invalid={fieldError ? "true" : "false"}
+                  aria-describedby={fieldError ? fieldErrorId : undefined}
                   disabled={isProcessing}
                 />
                 <FormFieldMessage
-                  error={errors.name?.message}
-                  errorId={errorId}
+                  error={fieldError?.message}
+                  errorId={fieldErrorId}
                 />
               </>
             );
@@ -85,20 +92,22 @@ export function ToolSubmissionForm() {
           name="website"
           control={control}
           render={function ({ field }) {
-            const errorId = getFieldErrorId(field.name, formId);
-
+            const fieldErrorId = getFieldErrorId(field.name, id);
+            const fieldError = errors[field.name];
             return (
               <>
                 <Input
                   {...field}
                   id="website"
+                  className="mt-2 border-neutral-300"
                   placeholder="https://example.com"
-                  aria-invalid={errors.website ? "true" : "false"}
+                  aria-invalid={fieldError ? "true" : "false"}
+                  aria-describedby={fieldError ? fieldErrorId : undefined}
                   disabled={isProcessing}
                 />
                 <FormFieldMessage
-                  error={errors.name?.message}
-                  errorId={errorId}
+                  error={fieldError?.message}
+                  errorId={fieldErrorId}
                 />
               </>
             );

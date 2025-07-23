@@ -13,7 +13,7 @@ export function FormMessage({ message, type }: FormMessageProps) {
   return (
     <div
       className={cn(
-        "rounded-md p-4 mt-4",
+        "rounded-md p-4 my-4",
         type === "error" && "bg-red-50",
         type === "success" && "bg-green-50"
       )}
