@@ -2,7 +2,7 @@ import { HttpApiEndpoint } from "@effect/platform";
 import {
   ToolSubmissionSchema,
   ToolSubmissionResponseSchema,
-} from "shared/src/schema";
+} from "shared/schema";
 
 export const submitTool = HttpApiEndpoint.post("submitTool", "/tools/submit")
   .setPayload(ToolSubmissionSchema)

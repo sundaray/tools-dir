@@ -23,11 +23,5 @@
 
     /* Environment */
     "lib": ["ES2022"],
-
-    /* Monorepo Path Aliases */
-    "baseUrl": ".",
-    "paths": {
-      "shared/*": ["../shared/src/*"]
-    }
   }
 }
