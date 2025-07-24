@@ -1,8 +1,9 @@
 import { Effect, Layer, Cause, Stream } from "effect";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse, } from "@effect/platform";
-import { NodeRuntime } from "@effect/platform-node";
+import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
 import { FileSystem } from "@effect/platform/FileSystem";
 import * as path from "node:path";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { tools as apiRouter } from "./tools/index.js";
 // --- Configuration ---
@@ -13,8 +14,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.join(__dirname, "../../frontend");
 const frontendDistPath = path.join(root, "dist");
-// --- Vite Server Cache ---
-let viteServer = null;
 // --- SSR Utilities ---
 class StreamError {
     error;
@@ -30,10 +29,18 @@ function responseToEffect(response) {
     const bodyStream = Stream.fromReadableStream(() => response.body, (error) => new StreamError(error));
     return HttpServerResponse.stream(bodyStream).pipe(HttpServerResponse.setHeaders(response.headers), HttpServerResponse.setStatus(response.status));
 }
+/* ------------------------------------------------------------------ */
+/* Vite dev-server helper                                              */
+/* ------------------------------------------------------------------ */
+let viteServer;
 // --- Create or get Vite server ---
 const getViteServer = Effect.gen(function* () {
-    if (isProd || viteServer)
+    if (isProd) {
+        return yield* Effect.die(new Error("getViteServer must not be called in production"));
+    }
+    if (viteServer) {
         return viteServer;
+    }
     const viteModule = yield* Effect.tryPromise({
         try: () => import("vite"),
         catch: (error) => new Cause.UnknownException(error),
@@ -44,10 +51,7 @@ const getViteServer = Effect.gen(function* () {
             logLevel: "info",
             server: {
                 middlewareMode: true,
-                watch: {
-                    usePolling: true,
-                    interval: 100,
-                },
+                watch: { usePolling: true, interval: 100 },
             },
             appType: "custom",
         }),
@@ -124,18 +128,7 @@ const app = isProd
     ? HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.get("/static/*", staticHandler()), HttpRouter.catchAll(ssrHandler))
     : HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.catchAll(ssrHandler));
 const AppLive = HttpServer.serve(app);
-// This creates the final, runnable program by providing the implementations to the application.
-const ServerLive = Layer.provide(AppLive);
-// --- Clean up on exit ---
-process.on("SIGINT", () => {
-    if (viteServer) {
-        viteServer.close();
-    }
-    process.exit(0);
-});
-console.log(isProd
-    ? "Running in production mode. Serving API, static files, and SSR."
-    : "Running in development mode with Vite HMR. Access at http://localhost:3000");
+const ServerLive = Layer.provide(AppLive, NodeHttpServer.layer(() => createServer(), { port }));
 // Run the program
 NodeRuntime.runMain(Layer.launch(ServerLive));
 //# sourceMappingURL=server.js.map

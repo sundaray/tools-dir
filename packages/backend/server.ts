@@ -1,5 +1,5 @@
 import type { ViteDevServer } from "vite";
-import { Effect, Layer, Cause, Stream } from "effect";
+import { Effect, Layer, Cause, Stream, Scope } from "effect";
 import {
   HttpRouter,
   HttpServer,
@@ -22,9 +22,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.join(__dirname, "../../frontend");
 const frontendDistPath = path.join(root, "dist");
-
-// --- Vite Server Cache ---
-let viteServer: ViteDevServer | null = null;
 
 // --- SSR Utilities ---
 class StreamError {
@@ -49,9 +46,22 @@ function responseToEffect(response: Response) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/* Vite dev-server helper                                              */
+/* ------------------------------------------------------------------ */
+
+let viteServer: ViteDevServer | undefined;
+
 // --- Create or get Vite server ---
 const getViteServer = Effect.gen(function* () {
-  if (isProd || viteServer) return viteServer;
+  if (isProd) {
+    return yield* Effect.die(
+      new Error("getViteServer must not be called in production")
+    );
+  }
+  if (viteServer) {
+    return viteServer;
+  }
 
   const viteModule = yield* Effect.tryPromise({
     try: () => import("vite"),
@@ -65,10 +75,7 @@ const getViteServer = Effect.gen(function* () {
         logLevel: "info",
         server: {
           middlewareMode: true,
-          watch: {
-            usePolling: true,
-            interval: 100,
-          },
+          watch: { usePolling: true, interval: 100 },
         },
         appType: "custom",
       }),
@@ -179,21 +186,9 @@ const app = isProd
 
 const AppLive = HttpServer.serve(app);
 
-// This creates the final, runnable program by providing the implementations to the application.
-const ServerLive = Layer.provide(AppLive);
-
-// --- Clean up on exit ---
-process.on("SIGINT", () => {
-  if (viteServer) {
-    viteServer.close();
-  }
-  process.exit(0);
-});
-
-console.log(
-  isProd
-    ? "Running in production mode. Serving API, static files, and SSR."
-    : "Running in development mode with Vite HMR. Access at http://localhost:3000"
+const ServerLive = Layer.provide(
+  AppLive,
+  NodeHttpServer.layer(() => createServer(), { port })
 );
 
 // Run the program
