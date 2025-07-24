@@ -11,6 +11,7 @@ import {
   NodeHttpServer,
   NodeRuntime,
   NodeContext,
+  NodeFileSystem,
 } from "@effect/platform-node";
 import { FileSystem } from "@effect/platform/FileSystem";
 import * as path from "node:path";
@@ -134,21 +135,22 @@ const ssrHandler = () =>
       }
     });
 
-    // Render the app
-    const webResponse = yield* Effect.tryPromise({
-      try: () =>
-        entry.render({
-          request: request,
-          head: viteHead,
-        }) as Promise<Response>,
-      catch: (error) => new Cause.UnknownException(error),
+    // The render function returns an Effect, not a Promise
+    // We need to run the Effect to get the Response
+    const renderEffect = entry.render({
+      request: request,
+      head: viteHead,
     });
+
+    // Run the Effect and get the Response
+    const webResponse = yield* renderEffect;
 
     return responseToEffect(webResponse);
   }).pipe(
-    Effect.catchAll((error) =>
-      HttpServerResponse.text("Internal Server Error", { status: 500 })
-    )
+    Effect.catchAll((error) => {
+      console.error("SSR Error:", error);
+      return HttpServerResponse.text("Internal Server Error", { status: 500 });
+    })
   );
 
 // --- Static files handler for production ---
@@ -182,16 +184,12 @@ const app = isProd
     );
 
 // Create the server
-const server = app.pipe(HttpServer.serve(), HttpServer.withLogAddress);
-
-// Create the server layer
-const serverLive = NodeHttpServer.layer(() => createServer(), { port });
-
-// Create the program
-const program = Layer.launch(
-  Layer.provide(server, serverLive).pipe((layer) =>
-    isProd ? Layer.provide(layer, NodeContext.layer) : layer
-  )
+const ServerLive = app.pipe(
+  HttpServer.serve(),
+  HttpServer.withLogAddress,
+  Layer.provide(NodeHttpServer.layer(() => createServer(), { port })),
+  Layer.provide(NodeFileSystem.layer),
+  Layer.provide(NodeContext.layer)
 );
 
 // Clean up on exit
@@ -209,4 +207,4 @@ console.log(
 );
 
 // Run the program
-NodeRuntime.runMain(program);
+NodeRuntime.runMain(Layer.launch(ServerLive));

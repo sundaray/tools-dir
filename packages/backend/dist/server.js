@@ -1,7 +1,7 @@
 // packages/backend/server.ts
 import { Effect, Layer, Cause, Stream } from "effect";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse, } from "@effect/platform";
-import { NodeHttpServer, NodeRuntime, NodeContext, } from "@effect/platform-node";
+import { NodeHttpServer, NodeRuntime, NodeContext, NodeFileSystem, } from "@effect/platform-node";
 import { FileSystem } from "@effect/platform/FileSystem";
 import * as path from "node:path";
 import { createServer } from "node:http";
@@ -96,16 +96,19 @@ const ssrHandler = () => Effect.gen(function* () {
             });
         }
     });
-    // Render the app
-    const webResponse = yield* Effect.tryPromise({
-        try: () => entry.render({
-            request: request,
-            head: viteHead,
-        }),
-        catch: (error) => new Cause.UnknownException(error),
+    // The render function returns an Effect, not a Promise
+    // We need to run the Effect to get the Response
+    const renderEffect = entry.render({
+        request: request,
+        head: viteHead,
     });
+    // Run the Effect and get the Response
+    const webResponse = yield* renderEffect;
     return responseToEffect(webResponse);
-}).pipe(Effect.catchAll((error) => HttpServerResponse.text("Internal Server Error", { status: 500 })));
+}).pipe(Effect.catchAll((error) => {
+    console.error("SSR Error:", error);
+    return HttpServerResponse.text("Internal Server Error", { status: 500 });
+}));
 // --- Static files handler for production ---
 const staticHandler = () => Effect.gen(function* () {
     const fs = yield* FileSystem;
@@ -123,11 +126,7 @@ const app = isProd
     ? HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.get("/static/*", staticHandler()), HttpRouter.catchAll(ssrHandler))
     : HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.catchAll(ssrHandler));
 // Create the server
-const server = app.pipe(HttpServer.serve(), HttpServer.withLogAddress);
-// Create the server layer
-const serverLive = NodeHttpServer.layer(() => createServer(), { port });
-// Create the program
-const program = Layer.launch(Layer.provide(server, serverLive).pipe((layer) => isProd ? Layer.provide(layer, NodeContext.layer) : layer));
+const ServerLive = app.pipe(HttpServer.serve(), HttpServer.withLogAddress, Layer.provide(NodeHttpServer.layer(() => createServer(), { port })), Layer.provide(NodeFileSystem.layer), Layer.provide(NodeContext.layer));
 // Clean up on exit
 process.on("SIGINT", () => {
     if (viteServer) {
@@ -139,5 +138,5 @@ console.log(isProd
     ? "Running in production mode. Serving API, static files, and SSR."
     : "Running in development mode with Vite HMR. Access at http://localhost:3000");
 // Run the program
-NodeRuntime.runMain(program);
+NodeRuntime.runMain(Layer.launch(ServerLive));
 //# sourceMappingURL=server.js.map
