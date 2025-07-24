@@ -10,8 +10,8 @@
     "build": "tsc",
     "dev": "npm-run-all --parallel dev:tsc \"dev:node -- --watch\"",
     "dev:tsc": "tsc --watch --preserveWatchOutput",
-    "dev:node": "node --enable-source-maps dist/index.js",
-    "start": "NODE_ENV=production node dist/index.js"
+    "dev:node": "node --enable-source-maps dist/server.js",
+    "start": "NODE_ENV=production node dist/server.js"
   },
   "dependencies": {
     "@effect/platform": "^0.89.0",
