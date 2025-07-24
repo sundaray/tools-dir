@@ -1,4 +1,4 @@
-// packages/backend/index.ts
+// packages/backend/server.ts
 
 import { Effect, Layer, Cause, Stream } from "effect";
 import {
@@ -10,7 +10,7 @@ import {
 import {
   NodeHttpServer,
   NodeRuntime,
-  NodeContext, // Import NodeContext
+  NodeContext,
 } from "@effect/platform-node";
 import { FileSystem } from "@effect/platform/FileSystem";
 import * as path from "node:path";
@@ -25,8 +25,11 @@ const isProd = process.env.NODE_ENV === "production";
 // --- Define Paths ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const frontendDistPath = path.join(__dirname, "../../../frontend/dist");
-const staticPath = path.join(frontendDistPath, "client");
+const root = path.join(__dirname, "../../frontend");
+const frontendDistPath = path.join(root, "dist");
+
+// --- Vite Server Cache ---
+let viteServer: any = null;
 
 // --- SSR Utilities ---
 class StreamError {
@@ -51,79 +54,159 @@ function responseToEffect(response: Response) {
   );
 }
 
-// --- Route Handlers ---
+// --- Create or get Vite server ---
+const getViteServer = Effect.gen(function* () {
+  if (isProd || viteServer) return viteServer;
 
-// Renders the React application on the server.
-const ssrHandler = Effect.gen(function* () {
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const { render } = yield* Effect.tryPromise({
-    try: () => import(path.join(frontendDistPath, "server/entry-server.js")),
+  const viteModule = yield* Effect.tryPromise({
+    try: () => import("vite"),
     catch: (error) => new Cause.UnknownException(error),
   });
-  const webResponse = yield* Effect.tryPromise({
-    try: () => render({ request: request, head: "" }) as Promise<Response>,
+
+  viteServer = yield* Effect.tryPromise({
+    try: () =>
+      viteModule.createServer({
+        root,
+        logLevel: "info",
+        server: {
+          middlewareMode: true,
+          watch: {
+            usePolling: true,
+            interval: 100,
+          },
+        },
+        appType: "custom",
+      }),
     catch: (error) => new Cause.UnknownException(error),
   });
-  return responseToEffect(webResponse);
+
+  return viteServer;
 });
 
-// Serves static files from the frontend's build output.
-const staticHandler = Effect.gen(function* () {
-  const fs = yield* FileSystem;
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  // Serve from /static/*, so we need to strip that prefix for the file path.
-  const relativePath = request.url.substring("/static".length);
-  const filePath = path.join(staticPath, relativePath);
+// --- SSR Handler ---
+const ssrHandler = () =>
+  Effect.gen(function* () {
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const url = request.url;
 
-  if (!filePath.startsWith(staticPath)) {
-    return HttpServerResponse.empty({ status: 401 });
-  }
-  const fileExists = yield* fs.exists(filePath);
-  if (fileExists) {
-    return yield* HttpServerResponse.file(filePath);
-  }
-  return yield* Effect.fail(new Error("File not found"));
-});
+    // Check if it's a file request (has extension)
+    if (path.extname(url) !== "") {
+      return HttpServerResponse.text(`${url} is not valid router path`, {
+        status: 404,
+      });
+    }
+
+    let viteHead = "";
+
+    if (!isProd) {
+      const vite = yield* getViteServer;
+
+      // Extract head content from Vite's transformation
+      const transformed = yield* Effect.tryPromise({
+        try: () =>
+          vite.transformIndexHtml(
+            url,
+            `<html><head></head><body></body></html>`
+          ) as Promise<string>,
+        catch: (error) => new Cause.UnknownException(error),
+      });
+
+      // Extract the head content
+      const headStart = transformed.indexOf("<head>") + 6;
+      const headEnd = transformed.indexOf("</head>");
+      viteHead = transformed.substring(headStart, headEnd);
+    }
+
+    // Load the server entry
+    const entry = yield* Effect.gen(function* () {
+      if (!isProd) {
+        const vite = yield* getViteServer;
+        return yield* Effect.tryPromise({
+          try: () => vite.ssrLoadModule("/src/entry-server.tsx"),
+          catch: (error) => new Cause.UnknownException(error),
+        });
+      } else {
+        return yield* Effect.tryPromise({
+          try: () =>
+            import(path.join(frontendDistPath, "server/entry-server.js")),
+          catch: (error) => new Cause.UnknownException(error),
+        });
+      }
+    });
+
+    // Render the app
+    const webResponse = yield* Effect.tryPromise({
+      try: () =>
+        entry.render({
+          request: request,
+          head: viteHead,
+        }) as Promise<Response>,
+      catch: (error) => new Cause.UnknownException(error),
+    });
+
+    return responseToEffect(webResponse);
+  }).pipe(
+    Effect.catchAll((error) =>
+      HttpServerResponse.text("Internal Server Error", { status: 500 })
+    )
+  );
+
+// --- Static files handler for production ---
+const staticHandler = () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem;
+    const request = yield* HttpServerRequest.HttpServerRequest;
+    const filePath = path.join(frontendDistPath, "client", request.url);
+
+    const fileExists = yield* fs.exists(filePath);
+    if (fileExists) {
+      return yield* HttpServerResponse.file(filePath);
+    }
+    return HttpServerResponse.text("Not Found", { status: 404 });
+  }).pipe(
+    Effect.catchAll(() => HttpServerResponse.text("Not Found", { status: 404 }))
+  );
 
 // --- Main Application Logic ---
 
-// Define the development app (serves API only).
-const devApp = HttpRouter.empty.pipe(
-  HttpRouter.mount("/tools", apiRouter),
-  HttpServer.serve(),
-  HttpServer.withLogAddress
-);
+// Define the app based on environment
+const app = isProd
+  ? HttpRouter.empty.pipe(
+      HttpRouter.mount("/tools", apiRouter),
+      HttpRouter.get("/static/*", staticHandler()),
+      HttpRouter.catchAll(ssrHandler)
+    )
+  : HttpRouter.empty.pipe(
+      HttpRouter.mount("/tools", apiRouter),
+      HttpRouter.catchAll(ssrHandler)
+    );
 
-// Define the production app (serves API, static files, and performs SSR).
-const prodApp = HttpRouter.empty
-  .pipe(
-    HttpRouter.mount("/tools", apiRouter),
-    HttpRouter.get("/static/*", staticHandler),
-    HttpRouter.catchAll(() => ssrHandler)
-  )
-  .pipe(HttpServer.serve(), HttpServer.withLogAddress);
+// Create the server
+const server = app.pipe(HttpServer.serve(), HttpServer.withLogAddress);
 
-// Use a ternary to select the correct app logic based on the environment.
-const app = isProd ? prodApp : devApp;
-
-if (isProd) {
-  console.log(
-    "Running in production mode. Serving API, static files, and SSR."
-  );
-} else {
-  console.log("Running in development mode. Serving API only.");
-}
-
-// Create the layer for the HTTP server itself.
+// Create the server layer
 const serverLive = NodeHttpServer.layer(() => createServer(), { port });
 
+// Create the program
 const program = Layer.launch(
-  // The base of our program provides the app logic to the server implementation.
-  Layer.provide(app, serverLive).pipe(
-    // We conditionally add another layer of dependencies ONLY in production.
-    (layer) => (isProd ? Layer.provide(layer, NodeContext.layer) : layer)
+  Layer.provide(server, serverLive).pipe((layer) =>
+    isProd ? Layer.provide(layer, NodeContext.layer) : layer
   )
 );
 
-// Run the final program.
+// Clean up on exit
+process.on("SIGINT", () => {
+  if (viteServer) {
+    viteServer.close();
+  }
+  process.exit(0);
+});
+
+console.log(
+  isProd
+    ? "Running in production mode. Serving API, static files, and SSR."
+    : "Running in development mode with Vite HMR. Access at http://localhost:3000"
+);
+
+// Run the program
 NodeRuntime.runMain(program);
