@@ -6,7 +6,11 @@ import {
   HttpServerRequest,
   HttpServerResponse,
 } from "@effect/platform";
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
+import {
+  NodeHttpServer,
+  NodeRuntime,
+  NodeFileSystem,
+} from "@effect/platform-node";
 import { FileSystem } from "@effect/platform/FileSystem";
 import * as path from "node:path";
 import { createServer } from "node:http";
@@ -173,7 +177,7 @@ const staticHandler = () =>
 // --- Main Application Logic ---
 
 // Define the app based on environment
-const app = isProd
+const app: HttpRouter.HttpRouter<never, FileSystem> = isProd
   ? HttpRouter.empty.pipe(
       HttpRouter.mount("/tools", apiRouter),
       HttpRouter.get("/static/*", staticHandler()),
@@ -186,10 +190,12 @@ const app = isProd
 
 const AppLive = HttpServer.serve(app);
 
-const ServerLive = Layer.provide(
-  AppLive,
-  NodeHttpServer.layer(() => createServer(), { port })
+const PlatformLive = Layer.merge(
+  NodeHttpServer.layer(() => createServer(), { port }),
+  NodeFileSystem.layer
 );
+
+const ServerLive = Layer.provide(AppLive, PlatformLive);
 
 // Run the program
 NodeRuntime.runMain(Layer.launch(ServerLive));
