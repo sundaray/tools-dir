@@ -1,5 +1,4 @@
-// packages/backend/server.ts
-
+import type { ViteDevServer } from "vite";
 import { Effect, Layer, Cause, Stream } from "effect";
 import {
   HttpRouter,
@@ -7,12 +6,7 @@ import {
   HttpServerRequest,
   HttpServerResponse,
 } from "@effect/platform";
-import {
-  NodeHttpServer,
-  NodeRuntime,
-  NodeContext,
-  NodeFileSystem,
-} from "@effect/platform-node";
+import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
 import { FileSystem } from "@effect/platform/FileSystem";
 import * as path from "node:path";
 import { createServer } from "node:http";
@@ -30,7 +24,7 @@ const root = path.join(__dirname, "../../frontend");
 const frontendDistPath = path.join(root, "dist");
 
 // --- Vite Server Cache ---
-let viteServer: any = null;
+let viteServer: ViteDevServer | null = null;
 
 // --- SSR Utilities ---
 class StreamError {
@@ -183,16 +177,12 @@ const app = isProd
       HttpRouter.catchAll(ssrHandler)
     );
 
-// Create the server
-const ServerLive = app.pipe(
-  HttpServer.serve(),
-  HttpServer.withLogAddress,
-  Layer.provide(NodeHttpServer.layer(() => createServer(), { port })),
-  Layer.provide(NodeFileSystem.layer),
-  Layer.provide(NodeContext.layer)
-);
+const AppLive = HttpServer.serve(app);
 
-// Clean up on exit
+// This creates the final, runnable program by providing the implementations to the application.
+const ServerLive = Layer.provide(AppLive);
+
+// --- Clean up on exit ---
 process.on("SIGINT", () => {
   if (viteServer) {
     viteServer.close();

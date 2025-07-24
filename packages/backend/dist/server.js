@@ -1,10 +1,8 @@
-// packages/backend/server.ts
 import { Effect, Layer, Cause, Stream } from "effect";
 import { HttpRouter, HttpServer, HttpServerRequest, HttpServerResponse, } from "@effect/platform";
-import { NodeHttpServer, NodeRuntime, NodeContext, NodeFileSystem, } from "@effect/platform-node";
+import { NodeRuntime } from "@effect/platform-node";
 import { FileSystem } from "@effect/platform/FileSystem";
 import * as path from "node:path";
-import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { tools as apiRouter } from "./tools/index.js";
 // --- Configuration ---
@@ -125,9 +123,10 @@ const staticHandler = () => Effect.gen(function* () {
 const app = isProd
     ? HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.get("/static/*", staticHandler()), HttpRouter.catchAll(ssrHandler))
     : HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.catchAll(ssrHandler));
-// Create the server
-const ServerLive = app.pipe(HttpServer.serve(), HttpServer.withLogAddress, Layer.provide(NodeHttpServer.layer(() => createServer(), { port })), Layer.provide(NodeFileSystem.layer), Layer.provide(NodeContext.layer));
-// Clean up on exit
+const AppLive = HttpServer.serve(app);
+// This creates the final, runnable program by providing the implementations to the application.
+const ServerLive = Layer.provide(AppLive);
+// --- Clean up on exit ---
 process.on("SIGINT", () => {
     if (viteServer) {
         viteServer.close();

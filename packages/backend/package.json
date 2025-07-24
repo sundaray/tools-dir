@@ -17,7 +17,7 @@
     "@effect/platform": "^0.89.0",
     "@effect/platform-node": "^0.92.0",
     "@types/node": "^24.0.15",
-    "effect": "^3.17.0",
+    "effect": "^3.17.1",
     "shared": "workspace:*",
     "vite": "^7.0.5"
   }
