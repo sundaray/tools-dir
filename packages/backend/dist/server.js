@@ -47,7 +47,7 @@ const getViteServer = Effect.gen(function* () {
     });
     viteServer = yield* Effect.tryPromise({
         try: () => viteModule.createServer({
-            root,
+            root: path.resolve(__dirname, "../../frontend"),
             logLevel: "info",
             server: {
                 middlewareMode: true,
@@ -63,6 +63,7 @@ const getViteServer = Effect.gen(function* () {
 const ssrHandler = () => Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const url = request.url;
+    console.log(`[SSR] Received request for URL: ${url}`);
     // Check if it's a file request (has extension)
     if (path.extname(url) !== "") {
         return HttpServerResponse.text(`${url} is not valid router path`, {
@@ -124,9 +125,9 @@ const staticHandler = () => Effect.gen(function* () {
 }).pipe(Effect.catchAll(() => HttpServerResponse.text("Not Found", { status: 404 })));
 // --- Main Application Logic ---
 // Define the app based on environment
-const app = isProd
-    ? HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.get("/static/*", staticHandler()), HttpRouter.catchAll(ssrHandler))
-    : HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.catchAll(ssrHandler));
+const app = (isProd
+    ? HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.get("/static/*", staticHandler()), HttpRouter.get("/*", ssrHandler()))
+    : HttpRouter.empty.pipe(HttpRouter.mount("/tools", apiRouter), HttpRouter.get("/*", ssrHandler())));
 const AppLive = HttpServer.serve(app);
 const PlatformLive = Layer.merge(NodeHttpServer.layer(() => createServer(), { port }), NodeFileSystem.layer);
 const ServerLive = Layer.provide(AppLive, PlatformLive);

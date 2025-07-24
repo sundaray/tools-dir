@@ -8,9 +8,9 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "npm-run-all --parallel dev:tsc \"dev:node -- --watch\"",
-    "dev:tsc": "tsc --watch --preserveWatchOutput",
-    "dev:node": "node --enable-source-maps dist/server.js",
+    "watch:tsc": "tsc --watch --preserveWatchOutput",
+    "watch:node": "node --enable-source-maps --watch dist/server.js",
+    "dev": "npm-run-all build --parallel watch:*",
     "start": "NODE_ENV=production node dist/server.js"
   },
   "dependencies": {

@@ -75,7 +75,7 @@ const getViteServer = Effect.gen(function* () {
   viteServer = yield* Effect.tryPromise({
     try: () =>
       viteModule.createServer({
-        root,
+        root: path.resolve(__dirname, "../../frontend"),
         logLevel: "info",
         server: {
           middlewareMode: true,
@@ -94,6 +94,7 @@ const ssrHandler = () =>
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
     const url = request.url;
+    console.log(`[SSR] Received request for URL: ${url}`);
 
     // Check if it's a file request (has extension)
     if (path.extname(url) !== "") {
@@ -177,16 +178,18 @@ const staticHandler = () =>
 // --- Main Application Logic ---
 
 // Define the app based on environment
-const app: HttpRouter.HttpRouter<never, FileSystem> = isProd
-  ? HttpRouter.empty.pipe(
-      HttpRouter.mount("/tools", apiRouter),
-      HttpRouter.get("/static/*", staticHandler()),
-      HttpRouter.catchAll(ssrHandler)
-    )
-  : HttpRouter.empty.pipe(
-      HttpRouter.mount("/tools", apiRouter),
-      HttpRouter.catchAll(ssrHandler)
-    );
+const app = (
+  isProd
+    ? HttpRouter.empty.pipe(
+        HttpRouter.mount("/tools", apiRouter),
+        HttpRouter.get("/static/*", staticHandler()),
+        HttpRouter.get("/*", ssrHandler())
+      )
+    : HttpRouter.empty.pipe(
+        HttpRouter.mount("/tools", apiRouter),
+        HttpRouter.get("/*", ssrHandler())
+      )
+) as HttpRouter.HttpRouter<never, FileSystem>;
 
 const AppLive = HttpServer.serve(app);
 

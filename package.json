@@ -7,8 +7,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently \"pnpm --filter frontend dev\" \"pnpm --filter backend dev\"",
-    "build": "pnpm --filter frontend build && pnpm --filter backend build",
+    "dev": "pnpm --filter backend dev",
+    "build": "pnpm --filter \"*\" build",
     "start": "pnpm --filter backend start"
   },
   "keywords": [],
