@@ -27,7 +27,7 @@ function responseToEffect(response) {
         return HttpServerResponse.empty().pipe(HttpServerResponse.setHeaders(response.headers), HttpServerResponse.setStatus(response.status));
     }
     const bodyStream = Stream.fromReadableStream(() => response.body, (error) => new StreamError(error));
-    return HttpServerResponse.stream(bodyStream).pipe(HttpServerResponse.setHeaders(response.headers), HttpServerResponse.setStatus(response.status));
+    return HttpServerResponse.stream(bodyStream).pipe(HttpServerResponse.setHeaders(response.headers), HttpServerResponse.setHeader("Content-Type", "text/html"), HttpServerResponse.setStatus(response.status));
 }
 /* ------------------------------------------------------------------ */
 /* Vite dev-server helper                                              */
@@ -47,6 +47,7 @@ const getViteServer = Effect.gen(function* () {
     });
     viteServer = yield* Effect.tryPromise({
         try: () => viteModule.createServer({
+            configFile: path.resolve(__dirname, "../../frontend/vite.config.ts"),
             root: path.resolve(__dirname, "../../frontend"),
             logLevel: "info",
             server: {

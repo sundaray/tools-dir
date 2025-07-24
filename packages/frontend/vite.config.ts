@@ -48,7 +48,12 @@ export default defineConfig((configEnv) => {
   return {
     plugins: [
       viteTsConfigPaths(),
-      tanstackRouter({ target: "react", autoCodeSplitting: true }),
+      tanstackRouter({
+        routesDirectory: path.resolve(__dirname, "src/routes"),
+        generatedRouteTree: path.resolve(__dirname, "src/routeTree.gen.ts"),
+        target: "react",
+        autoCodeSplitting: true,
+      }),
       react(),
       tailwindcss(),
     ],

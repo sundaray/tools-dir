@@ -46,6 +46,7 @@ function responseToEffect(response: Response) {
   );
   return HttpServerResponse.stream(bodyStream).pipe(
     HttpServerResponse.setHeaders(response.headers),
+    HttpServerResponse.setHeader("Content-Type", "text/html"),
     HttpServerResponse.setStatus(response.status)
   );
 }
@@ -75,6 +76,7 @@ const getViteServer = Effect.gen(function* () {
   viteServer = yield* Effect.tryPromise({
     try: () =>
       viteModule.createServer({
+        configFile: path.resolve(__dirname, "../../frontend/vite.config.ts"),
         root: path.resolve(__dirname, "../../frontend"),
         logLevel: "info",
         server: {
