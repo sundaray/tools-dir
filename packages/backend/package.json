@@ -8,9 +8,10 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "concurrently \"npm:dev:*\"",
+    "dev": "concurrently \"dev:*\"",
     "dev:tsc": "tsc --watch --preserveWatchOutput",
-    "dev:node": "node --watch --enable-source-maps dist/index.js"
+    "dev:node": "node --watch --enable-source-maps dist/index.js",
+    "start": "NODE_ENV=production node dist/index.js"
   },
   "dependencies": {
     "@effect/platform": "^0.89.0",

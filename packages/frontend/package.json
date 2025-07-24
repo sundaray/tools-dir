@@ -8,7 +8,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build"
+    "build": "pnpm run build:client && pnpm run build:server",
+    "build:client": "vite build",
+    "build:server": "vite build --ssr"
   },
   "dependencies": {
     "@effect/platform": "^0.90.0",
