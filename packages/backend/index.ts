@@ -1,159 +1,158 @@
-import {
-  HttpApiBuilder,
-  HttpApiSwagger,
-  HttpRouter,
-  HttpServerResponse,
-  HttpServer,
-  HttpServerRequest,
-} from "@effect/platform";
-import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
-import { Layer, Effect } from "effect";
-import { createServer } from "node:http";
-import { toolsApiLive } from "./tools/live.js";
-import path from "node:path";
+import { Effect, Layer } from "effect";
+import { Tag } from "effect/Context";
+import { identity } from "effect/Function";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import fs from "node:fs/promises";
 
-// Setup paths and environment
+import {
+  HttpServer,
+  HttpRouter,
+  HttpMiddleware,
+  HttpServerResponse,
+} from "@effect/platform";
+
+import { NodeHttpServer, NodeRuntime } from "@effect/platform-node";
+
+import { tools } from "./tools/index.js";
+
+// --- Configuration ---
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const root = path.resolve(__dirname, "../..");
 const isProd = process.env.NODE_ENV === "production";
+const PORT = 3000;
+// Note: Adjusted root path to point to the frontend directory correctly from backend/dist
+const frontendRoot = path.resolve(__dirname, "..", "frontend");
 
-// Initialize Vite in development
-let vite: any;
-if (!isProd) {
-  vite = await (
-    await import("vite")
-  ).createServer({
-    root: path.join(root, "packages/frontend"),
-    logLevel: "info",
-    server: {
-      middlewareMode: true,
-      watch: {
-        usePolling: true,
-        interval: 100,
-      },
-    },
-    appType: "custom",
-  });
-}
+// --- Service Definition for ViteDevServer (Dev only) ---
+// We manage the Vite server as a scoped resource within a Layer.
+// This ensures its startup and graceful shutdown are handled by Effect.
+type ViteDevServer = import("vite").ViteDevServer;
+const ViteDevServer = Tag<ViteDevServer>();
 
-// Static file serving route (production only)
-const staticFileRoute = HttpRouter.get(
-  "/static/*",
-  Effect.gen(function* () {
-    const req = yield* HttpServerRequest.HttpServerRequest;
-    const urlPath = req.url.replace(/^\/static/, "");
-    const filePath = path.join(
-      root,
-      "packages/frontend/dist/client/static",
-      urlPath
-    );
-
-    try {
-      const content = yield* Effect.tryPromise(() => fs.readFile(filePath));
-      const ext = path.extname(filePath);
-      const contentType =
-        ext === ".js"
-          ? "application/javascript"
-          : ext === ".css"
-          ? "text/css"
-          : ext === ".html"
-          ? "text/html"
-          : "application/octet-stream";
-
-      return HttpServerResponse.raw(content, {
-        status: 200,
-        headers: {
-          "content-type": contentType,
-        },
+const ViteLayer = Layer.scoped(
+  ViteDevServer,
+  Effect.acquireRelease(
+    Effect.tryPromise(async () => {
+      console.log("Creating Vite dev server...");
+      return (await import("vite")).createServer({
+        root: frontendRoot,
+        logLevel: "info",
+        server: { middlewareMode: true },
+        appType: "custom",
       });
-    } catch {
-      return HttpServerResponse.text("Not found", { status: 404 });
-    }
-  })
-);
+    }),
+    (vite) =>
+      Effect.log("Closing Vite server...").pipe(Effect.andThen(vite.close()))
+  )
+).pipe(Layer.filter(() => !isProd));
 
-// SSR catch-all route
-const ssrRoute = HttpRouter.all(
-  "*",
-  Effect.gen(function* () {
-    const req = yield* HttpServerRequest.HttpServerRequest;
+const AppRouter = HttpRouter.empty.pipe(
+  HttpRouter.mount("/tools", tools),
 
-    // Skip API routes and file extensions
-    if (req.url.startsWith("/tools") || path.extname(req.url) !== "") {
-      return HttpServerResponse.text("Not found", { status: 404 });
-    }
+  // 2. Serve static assets from `dist/client` in production.
+  // This replaces your manual `staticFileRoute` with a more robust, built-in solution.
+  HttpRouter.use(
+    isProd
+      ? HttpMiddleware.serveDirectory({
+          directory: path.join(frontendRoot, "dist", "client"),
+        })
+      : identity // In dev, Vite handles static assets via its middleware.
+  ),
 
-    // Get Vite head transformation in development
-    let viteHead = "";
-    if (!isProd && vite) {
-      const htmlTemplate = `<html><head></head><body></body></html>`;
-      const transformed = yield* Effect.tryPromise(() =>
-        vite.transformIndexHtml(req.url, htmlTemplate)
-      );
-      viteHead = transformed.substring(
-        transformed.indexOf("<head>") + 6,
-        transformed.indexOf("</head>")
-      );
-    }
+  // 3. The SSR catch-all route. This should be last.
+  HttpRouter.get(
+    "*",
+    Effect.gen(function* (_) {
+      const req = yield* _(HttpServer.request.ServerRequest);
+      const vite = yield* _(Effect.serviceOption(ViteDevServer));
+      const url = req.url;
 
-    // Load the SSR entry module
-    const entry = yield* Effect.tryPromise(async () => {
-      if (!isProd) {
-        return vite.ssrLoadModule("/src/entry-server.tsx");
-      } else {
-        return import(
-          path.join(root, "packages/frontend/dist/server/entry-server.js")
-        );
+      // Skip rendering for file-like paths that might have fallen through
+      if (path.extname(url)) {
+        return HttpServerResponse.empty({ status: 404 });
       }
-    });
 
-    // Call the render function
-    const response = yield* Effect.tryPromise(() =>
-      entry.render({ request: req, head: viteHead })
-    );
+      console.info(`SSR Rendering: ${url}`);
 
-    // Stream the response
-    if (response.body) {
-      return HttpServerResponse.stream(response.body, {
-        status: response.status,
-        headers: Object.fromEntries(response.headers.entries()),
-      });
-    }
+      // Get Vite-injected head scripts in development
+      const viteHead = yield* _(
+        Effect.tryPromise(async () => {
+          if (vite.isSome()) {
+            const html = await vite.value.transformIndexHtml(
+              url,
+              `<html><head></head><body></body></html>`
+            );
+            return html.substring(
+              html.indexOf("<head>") + 6,
+              html.indexOf("</head>")
+            );
+          }
+          return "";
+        })
+      );
 
-    return HttpServerResponse.empty({ status: response.status });
-  })
+      // Load the SSR entry module
+      const entry = yield* _(
+        Effect.tryPromise(async () => {
+          if (vite.isSome()) {
+            return vite.value.ssrLoadModule("/src/entry-server.tsx");
+          } else {
+            return import(
+              path.join(frontendRoot, "dist", "server", "entry-server.js")
+            );
+          }
+        })
+      );
+
+      // Your `entry-server.tsx` returns a standard `Response` object. This is great!
+      // We can wrap the call and convert the result to an Effect response.
+      const webResponse = yield* _(
+        Effect.tryPromise(() => entry.render({ request: req, head: viteHead }))
+      );
+
+      return HttpServerResponse.fromWeb(webResponse);
+    }).pipe(
+      // Global error handler for the SSR route
+      Effect.catchAllCause((cause) => {
+        console.error("SSR Handler Failed", cause);
+        return HttpServerResponse.text(String(cause), { status: 500 });
+      })
+    )
+  )
 );
 
-// Create the main router
-const mainRouter = HttpRouter.empty.pipe(
-  // Mount API routes
-  HttpRouter.mount("/tools", HttpApiBuilder.toHttpApp(toolsApiLive)),
-  // Mount static files in production
-  ...(isProd ? [staticFileRoute] : []),
-  // Mount SSR catch-all
-  ssrRoute
+// --- Middleware Layer for Vite HMR (Dev only) ---
+const ViteMiddlewareLayer = HttpServer.layer.pipe(
+  HttpServer.withMiddleware(
+    Effect.serviceOption(ViteDevServer).pipe(
+      Effect.map((vite) =>
+        vite.isSome()
+          ? // Adapt Vite's Express-style middleware for Effect Platform
+            NodeHttpServer.fromRequestHandler(vite.value.middlewares, {
+              parseBody: false,
+            })
+          : identity
+      )
+    )
+  )
 );
 
-// Create the server with all middleware
-const ServerLive = HttpServer.serve(mainRouter).pipe(
-  // Add Swagger documentation
-  Layer.provide(HttpApiSwagger.layer({ path: "/docs" })),
-  // Add Vite middleware in development
-  !isProd && vite ? HttpServer.middleware(viteMiddleware) : Layer.empty,
-  // Add the HTTP server
-  Layer.provide(NodeHttpServer.layer(createServer, { port: 3000 }))
+// --- Create the final Application Layer ---
+const AppLayer = AppRouter.pipe(HttpServer.serve(), HttpServer.withLogAddress);
+
+// --- Compose all layers into the final runnable application ---
+const ServerLive = AppLayer.pipe(
+  // The main server layer is the final one, consuming the app.
+  Layer.provide(NodeHttpServer.layer({ port: PORT })),
+  // Add dependencies for the server & dev mode
+  Layer.provide(NodeContext.layer),
+  Layer.provide(ViteLayer),
+  Layer.provide(ViteMiddlewareLayer)
 );
 
-// Launch the server
-Layer.launch(ServerLive).pipe(NodeRuntime.runMain);
+// --- Program Entry Point ---
+// `Layer.launch` creates a never-ending Effect that runs the server.
+// `NodeRuntime.runMain` executes it.
+const program = Layer.launch(ServerLive);
 
-// Handle graceful shutdown
-process.on("SIGINT", async () => {
-  if (vite) {
-    await vite.close();
-  }
-  process.exit(0);
-});
+NodeRuntime.runMain(program);

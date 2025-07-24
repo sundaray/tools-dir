@@ -25,9 +25,15 @@ importers:
       shared:
         specifier: workspace:*
         version: link:../shared
+      vite:
+        specifier: ^7.0.5
+        version: 7.0.5(@types/node@24.1.0)(jiti@2.4.2)(lightningcss@1.30.1)(tsx@4.20.3)
 
   packages/frontend:
     dependencies:
+      '@effect/platform':
+        specifier: ^0.90.0
+        version: 0.90.0(effect@3.17.1)
       '@hookform/resolvers':
         specifier: ^5.1.1
         version: 5.1.1(react-hook-form@7.60.0(react@19.1.0))
@@ -300,6 +306,11 @@ packages:
 
   '@effect/platform@0.89.0':
     resolution: {integrity: sha512-9nTaD1h/X4M4qdl/4E1atwoe+p4VoH0SJiYd2mJrDJC18alwqlI/xaKNGRnJVPbIrhbKC62YJ9h2mqfkE4t2YA==}
+    peerDependencies:
+      effect: ^3.17.0
+
+  '@effect/platform@0.90.0':
+    resolution: {integrity: sha512-F26RZO8qVyCLH43EF9BvJwrhtFsZL2Xv66Jxxjj/sBIes8TOVpyebaysQ7Tz33xALobwU1eNgm8vh18VkJiWnQ==}
     peerDependencies:
       effect: ^3.17.0
 
@@ -1870,6 +1881,14 @@ snapshots:
       - utf-8-validate
 
   '@effect/platform@0.89.0(effect@3.17.1)':
+    dependencies:
+      '@opentelemetry/semantic-conventions': 1.36.0
+      effect: 3.17.1
+      find-my-way-ts: 0.1.6
+      msgpackr: 1.11.5
+      multipasta: 0.2.7
+
+  '@effect/platform@0.90.0(effect@3.17.1)':
     dependencies:
       '@opentelemetry/semantic-conventions': 1.36.0
       effect: 3.17.1
